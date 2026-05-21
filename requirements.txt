@@ -3,3 +3,6 @@ google-auth
 requests
 python-dotenv
 google-genai
+streamlit
+sentence-transformers
+faiss-cpu
