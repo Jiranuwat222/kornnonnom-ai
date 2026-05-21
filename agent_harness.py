@@ -11,75 +11,79 @@ from agent_tools import TOOLS
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 MODEL = "gemini-2.5-flash"
-
-# คำสั่งบังคับให้ AI ทำตัวเป็น Agent และตอบเป็น JSON เท่านั้น
-SYSTEM_INSTRUCTION = """
-คุณคือ Kornnonnom ผู้ช่วย AI ของร้าน Kornnonnom Cafe
-หน้าที่ของนักศึกษาคือแปลงคำสั่งภาษาไทยเป็น JSON action
-ตอบกลับเป็น JSON เท่านั้น ในรูปแบบ:
-{"action": "log_sale", "args": {"menu": "...", "quantity": N, "price": N}}
-ถ้าคำสั่งไม่ใช่การบันทึกยอดขาย ตอบ: {"action": "unknown", "args": {}}
-"""
-
 TRACE_FILE = "agent_trace.log"
 
-def write_trace(event: str, data: dict) -> None:
-    """ฟังก์ชันสำหรับแอบจดบันทึกว่า AI คิดและทำอะไรบ้าง"""
-    with open(TRACE_FILE, "a", encoding="utf-8") as f:
-        record = {
-            "timestamp": datetime.now().isoformat(),
-            "event": event,
-            **data,
-        }
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+class AgentHarness:
+    def __init__(self):
+        self.client = client
 
-def run_agent(user_input: str) -> str:
-    write_trace("user_input", {"message": user_input})
+    def write_trace(self, event: str, data: dict) -> None:
+        with open(TRACE_FILE, "a", encoding="utf-8") as f:
+            record = {
+                "timestamp": datetime.now().isoformat(),
+                "event": event,
+                **data,
+            }
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    # ส่งข้อความไปให้ Gemini คิด
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=f"{SYSTEM_INSTRUCTION}\n\nคำสั่ง: {user_input}",
-    )
-    raw = response.text.strip()
-    write_trace("llm_response", {"raw": raw})
+    def run(self, user_input: str, context: str = "") -> str:
+        self.write_trace("user_input", {"message": user_input})
 
-    # --- เพิ่ม 4 บรรทัดนี้เพื่อล้าง Markdown ที่ AI แถมมา ---
-    raw = raw.removeprefix("```json")
-    raw = raw.removeprefix("```")
-    raw = raw.removesuffix("```")
-    raw = raw.strip()
-    # ----------------------------------------
+        # อัปเกรดสมองกล: สั่งให้ตอบกลับทั้งแชทและ JSON Action
+        system_prompt = f"""
+        คุณคือ Kornnonnom ผู้ช่วย AI สุดเท่ของร้าน Kornnonnom Cafe รอบดึก
+        
+        กฎการทำงานของคุณ:
+        คุณต้องตอบกลับเป็นรูปแบบ JSON เสมอ โดยมีโครงสร้างดังนี้:
+        {{
+            "reply": "ข้อความที่คุณต้องการตอบลูกค้า (ตอบคำถาม, ชวนคุย, หรือยืนยันออเดอร์ สไตล์วัยรุ่นนอนดึก)",
+            "action": "ชื่อเครื่องมือ (ถ้ามีการสั่งเครื่องดื่มให้ใช้ 'log_sale', ถ้าไม่มีให้ใส่ 'none')",
+            "args": {{"menu": "ชื่อเมนู", "quantity": จำนวน, "price": ราคาต่อ 1 แก้ว}}
+        }}
+        
+        ตัวอย่างที่ 1 (ลูกค้าถามด้วย และสั่งด้วย): "มิลค์ทีหมดรึยัง เอา 4 แก้ว"
+        {{
+            "reply": "มิลค์ทียังไม่หมดครับผม! จัดไป 4 แก้วแบบตาค้างกันไปเลย 🦉✨",
+            "action": "log_sale",
+            "args": {{"menu": "มิลค์ทีสายนอนน้อย", "quantity": 4, "price": 55}}
+        }}
 
-    # พยายามถอดรหัส JSON ที่ AI ตอบกลับมา
-    try:
-        action_data = json.loads(raw)
-    except json.JSONDecodeError:
-        return "❌ AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง"
+        ตัวอย่างที่ 2 (ลูกค้าแค่ชวนคุย หรือถามข้อมูลเฉยๆ): "ร้านเปิดกี่โมงครับ"
+        {{
+            "reply": "ร้านเปิด 18:00 - 02:00 น. ครับผม แวะมานั่งชิลๆ โต้รุ่งด้วยกันได้เลย! 🌙",
+            "action": "none",
+            "args": {{}}
+        }}
 
-    action = action_data.get("action")
-    args = action_data.get("args", {})
+        ข้อมูลร้านสำหรับตอบคำถาม หรือดูราคาเครื่องดื่ม:
+        {context}
+        """
 
-    # เช็กว่าคำสั่งที่ AI บอกมา มีอยู่ในกล่องเครื่องมือเราไหม
-    if action not in TOOLS:
-        return f"⚠️ ไม่รู้จัก action: {action}"
-
-    # สั่งให้เครื่องมือทำงาน
-    try:
-        result = TOOLS[action](**args)
-        write_trace("tool_result", {"action": action, "result": result})
-        return (
-            f"✅ บันทึกสำเร็จ: {result['menu']} "
-            f"x{result['quantity']} = {result['total']} บาท"
+        response = self.client.models.generate_content(
+            model=MODEL,
+            contents=f"{system_prompt}\n\nคำสั่งจากลูกค้า: {user_input}",
         )
-    except (ValueError, TypeError) as e:
-        write_trace("tool_error", {"action": action, "error": str(e)})
-        return f"❌ ข้อมูลไม่ถูกต้อง: {e}"
+        raw = response.text.strip()
+        self.write_trace("llm_response", {"raw": raw})
 
-if __name__ == "__main__":
-    print("Kornnonnom Agent พร้อมรับคำสั่ง (พิมพ์ 'exit' เพื่อออก)\n")
-    while True:
-        user_input = input("คุณ: ").strip()
-        if user_input.lower() == "exit":
-            break
-        print(f"Kornnonnom: {run_agent(user_input)}\n")
+        clean_raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+        try:
+            action_data = json.loads(clean_raw)
+            reply_text = action_data.get("reply", "รับทราบครับผม!")
+            action = action_data.get("action", "none")
+            args = action_data.get("args", {})
+
+            if action == "log_sale" and action in TOOLS:
+                result = TOOLS[action](**args)
+                self.write_trace("tool_result", {"action": action, "result": result})
+                
+                # เอากลับมาผูกรวมกัน: คำตอบจาก AI + ข้อความยืนยันจากระบบ
+                return f"{reply_text}\n\n*(✅ ระบบหลังบ้าน: บันทึก {result['menu']} จำนวน {result['quantity']} แก้ว ยอดรวม {result['total']} บาท ลงชีตเรียบร้อย)*"
+            else:
+                return reply_text
+                
+        except json.JSONDecodeError:
+            return raw # เผื่อ AI หลุดกรอบ ตอบมาเป็นข้อความธรรมดา
+        except Exception as e:
+            return f"❌ ข้อมูลไม่ถูกต้อง หรือไม่มีเมนูนี้ครับ: {e}"

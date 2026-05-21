@@ -6,3 +6,4 @@ google-genai
 streamlit
 sentence-transformers
 faiss-cpu
+torchvision

@@ -1,4 +1,5 @@
 from datetime import datetime
+from sales_logger import log_sale_to_sheet  # นำเข้าฟังก์ชันบันทึกลงชีต
 
 def validate_sale(menu: str, quantity: int, price: float) -> None:
     """Guardrails: ป้อมยามดักจับความผิดปกติ raise ValueError ถ้าข้อมูลไม่ถูกต้อง"""
@@ -10,9 +11,13 @@ def validate_sale(menu: str, quantity: int, price: float) -> None:
         raise ValueError("ราคาต้องมากกว่า 0")
 
 def log_sale(menu: str, quantity: int, price: float) -> dict:
-    """เครื่องมือบันทึกยอดขาย (เวอร์ชันทดสอบ ส่งค่ากลับเป็น dict)"""
+    """เครื่องมือบันทึกยอดขาย (เชื่อมต่อกับ Google Sheets)"""
     validate_sale(menu, quantity, price)
     total = quantity * price
+    
+    # 🔴 เรียกใช้ฟังก์ชันบันทึกลงชีตของจริง
+    log_sale_to_sheet(menu, quantity, price, total)
+    
     return {
         "status": "success",
         "menu": menu,
