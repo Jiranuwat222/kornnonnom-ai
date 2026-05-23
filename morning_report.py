@@ -24,9 +24,7 @@ def generate_report():
         # ดึงข้อมูลทั้งหมดมาเป็น Dictionary
         records = sheet.get_all_records() 
         
-        # ตามโจทย์ต้องสรุปยอดของ "เมื่อวาน"
-        # แต่เพื่อทดสอบว่าโค้ดทำงานได้ตอนนี้ (เพราะเราเพิ่งคีย์ยอดของ"วันนี้"ไป) 
-        # ผมขอตั้งเป็นวันที่ของ "วันนี้" ก่อนนะครับ
+        # ดึงยอดของ "วันนี้"
         target_date = datetime.now().strftime("%d/%m/%Y") 
         
         total_sales = 0
@@ -45,15 +43,15 @@ def generate_report():
                 else:
                     menu_counts[menu] = qty
         
-        # สรุปข้อความส่งเข้า Telegram
+        # สรุปข้อความส่งเข้า Telegram ฉบับ LaserPay
         if total_sales == 0:
-            msg = f"🌅 อรุณสวัสดิ์ค่าบอส~ \nสรุปยอดขายของวันที่ ({target_date}) 📝\n\nไม่มีออเดอร์เลยค่ะ ฮึบๆ สู้ใหม่วันนี้นะคะ! ✌️✨"
+            msg = f"⚡️ รายงานระบบ LaserPay \nประจำวันที่ ({target_date}) 📝\n\nวันนี้ยังไม่มีออเดอร์เข้ามาครับ ระบบสแตนด์บายรอให้บริการต่อไป! 🎮✨"
         else:
             best_seller = max(menu_counts, key=menu_counts.get)
-            msg = f"🌅 อรุณสวัสดิ์ค่าบอส~ \nบอท Kornnonnom มาส่งรายงานยอดขายของวันที่ ({target_date}) แล้วจ้า 📊\n\n"
-            msg += f"💰 ยอดขายรวม: *{total_sales}* บาท\n"
-            msg += f"👑 เมนูขายดีสุด: *{best_seller}* ({menu_counts[best_seller]} แก้ว)\n\n"
-            msg += "ขอให้วันนี้ลูกค้าแน่นๆ ออเดอร์ปังๆ นะคะ! 🎉💖"
+            msg = f"⚡️ สรุปยอดระบบ LaserPay \nรายงานยอดเติมเกมประจำวันที่ ({target_date}) 📊\n\n"
+            msg += f"💰 ยอดเติมเงินรวม: *{total_sales}* บาท\n"
+            msg += f"🔥 แพ็กเกจยอดฮิต: *{best_seller}* ({menu_counts[best_seller]} แพ็ก)\n\n"
+            msg += "ระบบสแตนด์บายปกติ พร้อมลุยรับออเดอร์ตลอด 24 ชม. ครับบอส! 🚀🎮"
             
         send_telegram(msg)
         print("✅ ส่งรายงานเข้า Telegram เรียบร้อยแล้ว! ลองเปิดแอปดูได้เลยครับ")

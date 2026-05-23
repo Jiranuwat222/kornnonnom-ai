@@ -1,4 +1,3 @@
-# agent_harness.py
 import json
 import os
 from datetime import datetime
@@ -26,42 +25,40 @@ class AgentHarness:
             }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    def run(self, user_input: str, context: str = "") -> str:
+    # 🟢 เพิ่มประวัติแชท (history) เข้ามาเป็นตัวแปร
+    def run(self, user_input: str, context: str = "", history: list = None) -> str:
         self.write_trace("user_input", {"message": user_input})
 
-        # อัปเกรดสมองกล: สั่งให้ตอบกลับทั้งแชทและ JSON Action
+        # 🟢 จัดรูปแบบประวัติการคุย (ดึงมา 4 ข้อความล่าสุด เพื่อให้บอทจำได้ว่ากำลังคุยเกมอะไรอยู่)
+        history_text = "ไม่มีประวัติการคุยก่อนหน้า"
+        if history and len(history) > 0:
+            history_text = ""
+            for msg in history[-4:]:
+                role = "ลูกค้า" if msg["role"] == "user" else "แอดมิน"
+                history_text += f"{role}: {msg['content']}\n"
+
         system_prompt = f"""
-        คุณคือ Kornnonnom ผู้ช่วย AI สุดเท่ของร้าน Kornnonnom Cafe รอบดึก
+        คุณคือ AI แอดมินสุดล้ำของร้าน "LaserPay" บริการรับเติมเกมออนไลน์
         
         กฎการทำงานของคุณ:
         คุณต้องตอบกลับเป็นรูปแบบ JSON เสมอ โดยมีโครงสร้างดังนี้:
         {{
-            "reply": "ข้อความที่คุณต้องการตอบลูกค้า (ตอบคำถาม, ชวนคุย, หรือยืนยันออเดอร์ สไตล์วัยรุ่นนอนดึก)",
-            "action": "ชื่อเครื่องมือ (ถ้ามีการสั่งเครื่องดื่มให้ใช้ 'log_sale', ถ้าไม่มีให้ใส่ 'none')",
-            "args": {{"menu": "ชื่อเมนู", "quantity": จำนวน, "price": ราคาต่อ 1 แก้ว}}
+            "reply": "ข้อความตอบลูกค้า (สไตล์เกมเมอร์ เป็นกันเอง กระตือรือร้น รวดเร็ว)",
+            "action": "ชื่อเครื่องมือ (ถ้ามีการสั่งเติมเกมให้ใช้ 'log_sale', ถ้าไม่มีให้ใส่ 'none')",
+            "args": {{"menu": "ชื่อแพ็กเกจ+ชื่อเกม", "quantity": จำนวนแพ็กเกจ, "price": ราคาต่อ 1 แพ็กเกจ}}
         }}
         
-        ตัวอย่างที่ 1 (ลูกค้าถามด้วย และสั่งด้วย): "มิลค์ทีหมดรึยัง เอา 4 แก้ว"
-        {{
-            "reply": "มิลค์ทียังไม่หมดครับผม! จัดไป 4 แก้วแบบตาค้างกันไปเลย 🦉✨",
-            "action": "log_sale",
-            "args": {{"menu": "มิลค์ทีสายนอนน้อย", "quantity": 4, "price": 55}}
-        }}
+        ประวัติการสนทนาล่าสุด (สำคัญมาก!):
+        {history_text}
+        *คำแนะนำ: หากลูกค้าสั่งแพ็กเกจแบบย่อๆ (เช่น "300 2แพ็ค") ให้คุณดูจาก 'ประวัติการสนทนาล่าสุด' ว่าก่อนหน้านี้ลูกค้ากำลังคุยเรื่องเกมอะไรอยู่ แล้วสรุปออเดอร์ให้ตรงกับเกมนั้น*
 
-        ตัวอย่างที่ 2 (ลูกค้าแค่ชวนคุย หรือถามข้อมูลเฉยๆ): "ร้านเปิดกี่โมงครับ"
-        {{
-            "reply": "ร้านเปิด 18:00 - 02:00 น. ครับผม แวะมานั่งชิลๆ โต้รุ่งด้วยกันได้เลย! 🌙",
-            "action": "none",
-            "args": {{}}
-        }}
-
-        ข้อมูลร้านสำหรับตอบคำถาม หรือดูราคาเครื่องดื่ม:
+        ข้อมูลแพ็กเกจเกมของร้าน:
         {context}
         """
 
         response = self.client.models.generate_content(
             model=MODEL,
-            contents=f"{system_prompt}\n\nคำสั่งจากลูกค้า: {user_input}",
+            contents=f"{system_prompt}\n\nคำสั่งล่าสุดจากลูกค้า: {user_input}",
         )
         raw = response.text.strip()
         self.write_trace("llm_response", {"raw": raw})
@@ -78,12 +75,14 @@ class AgentHarness:
                 result = TOOLS[action](**args)
                 self.write_trace("tool_result", {"action": action, "result": result})
                 
-                # เอากลับมาผูกรวมกัน: คำตอบจาก AI + ข้อความยืนยันจากระบบ
-                return f"{reply_text}\n\n*(✅ ระบบหลังบ้าน: บันทึก {result['menu']} จำนวน {result['quantity']} แก้ว ยอดรวม {result['total']} บาท ลงชีตเรียบร้อย)*"
+                if result.get("status") == "success":
+                    return f"{reply_text}\n\n*(✅ ระบบหลังบ้าน: บันทึกออเดอร์ {result['menu']} จำนวน {result['quantity']} แพ็ก ยอดรวม {result['total']} บาท ลงชีตเรียบร้อย)*"
+                else:
+                    return f"❌ เกิดข้อผิดพลาด: {result.get('message')}"
             else:
                 return reply_text
                 
         except json.JSONDecodeError:
-            return raw # เผื่อ AI หลุดกรอบ ตอบมาเป็นข้อความธรรมดา
+            return raw 
         except Exception as e:
-            return f"❌ ข้อมูลไม่ถูกต้อง หรือไม่มีเมนูนี้ครับ: {e}"
+            return f"❌ ข้อมูลแพ็กเกจไม่ถูกต้อง หรือไม่มีในระบบครับ: {e}"
