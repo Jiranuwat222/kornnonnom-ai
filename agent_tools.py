@@ -6,8 +6,8 @@ from sheets_client import get_sheet
 
 load_dotenv()
 
-# --- 🟢 ฟังก์ชันส่งแจ้งเตือน Telegram (เพิ่มสรุปยอดวันนี้) ---
-def send_order_alert(menu, quantity, current_total, today_orders_count, today_total_revenue):
+# --- 🟢 ฟังก์ชันส่งแจ้งเตือน Telegram (เพิ่มสรุปยอดแยกตามเกมวันนี้) ---
+def send_order_alert(menu, quantity, current_total, today_orders_count, today_total_revenue, daily_summary):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     
@@ -22,9 +22,14 @@ def send_order_alert(menu, quantity, current_total, today_orders_count, today_to
     msg += f"📦 จำนวน: *{quantity}* ชุด\n"
     msg += f"💰 ยอดบิลนี้: *{current_total:,.2f}* บาท\n"
     msg += f"------------------------\n"
-    msg += f"📊 **อัปเดตยอดรวมวันนี้**\n"
-    msg += f"📝 จำนวนออเดอร์: *{today_orders_count}* รายการ\n"
-    msg += f"💵 รายได้รวม: *{today_total_revenue:,.2f}* บาท\n\n"
+    msg += f"📊 **สรุปยอดขายวันนี้ (รวม {today_orders_count} บิล)**\n"
+    
+    # วนลูปดึงข้อมูลสรุปแต่ละเกมมาแสดงผล
+    for game_name, data in daily_summary.items():
+        msg += f"🔸 {game_name}: {data['qty']} ชุด ({data['revenue']:,.0f} ฿)\n"
+        
+    msg += f"------------------------\n"
+    msg += f"💵 **รายได้รวมวันนี้: {today_total_revenue:,.2f} บาท**\n\n"
     msg += f"รีบเข้าไปดำเนินการให้ลูกค้าด่วนเลยครับบอส! 🚀"
     
     payload = {
@@ -53,13 +58,38 @@ def log_sale(menu: str, quantity: int, price: float) -> dict:
         today_orders_count = 0
         today_total_revenue = 0
         
+        # สร้าง Dictionary สำหรับจัดกลุ่มยอดขายรายแพ็กเกจ
+        daily_summary = {}
+        
         for row in records:
-            if str(row.get('วันที่')) == date_today:
+            # ใช้การดึงข้อมูลแบบเผื่อว่าหัวคอลัมน์สะกดต่างไปเล็กน้อย
+            row_date = str(row.get('วันที่', list(row.values())[0]))
+            
+            if row_date == date_today:
                 today_orders_count += 1
-                today_total_revenue += float(row.get('ยอดรวม', 0))
+                
+                # ดึงยอดรวมและจำนวนของแต่ละแถวมาบวกเพิ่ม
+                try:
+                    row_total = float(str(row.get('ยอดรวม', list(row.values())[4])).replace(',', ''))
+                    row_qty = int(str(row.get('จำนวน', list(row.values())[2])).replace(',', ''))
+                except:
+                    row_total = 0
+                    row_qty = 1
+                    
+                today_total_revenue += row_total
+                
+                # ดึงชื่อแพ็กเกจ และตัดข้อความ (UID: xxxx) ออก เพื่อให้รวมยอดเกมเดียวกันได้
+                raw_menu_name = str(row.get('แพ็กเกจ', list(row.values())[1]))
+                clean_menu = raw_menu_name.split(' (UID:')[0].strip()
+                
+                if clean_menu not in daily_summary:
+                    daily_summary[clean_menu] = {'qty': 0, 'revenue': 0}
+                
+                daily_summary[clean_menu]['qty'] += row_qty
+                daily_summary[clean_menu]['revenue'] += row_total
         
         # 3. ส่งแจ้งเตือน Telegram พร้อมแนบยอดสรุป
-        send_order_alert(menu, quantity, total, today_orders_count, today_total_revenue)
+        send_order_alert(menu, quantity, total, today_orders_count, today_total_revenue, daily_summary)
         
         return {
             "status": "success",

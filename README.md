@@ -8,7 +8,7 @@
 
 ## 🚀 Live Demo
 ทดลองใช้งานระบบแชทบอท LaserPay ได้ที่นี่:
-🔗 **[ใส่ลิงก์ Hugging Face ของคุณตรงนี้ เช่น https://huggingface.co/spaces/Jiranuwat222/laserpay-ai]**
+🔗 **https://huggingface.co/spaces/Jiranuwat222/laserpay-ai**
 
 ---
 
@@ -28,3 +28,12 @@
    ```bash
    git clone [https://github.com/Jiranuwat222/laserpay-ai.git](https://github.com/Jiranuwat222/laserpay-ai.git)
    cd laserpay-ai
+
+2. **Install dependencies**
+   pip install -r requirements.txt
+
+3.   **Setup Environment Variables**
+   สร้างไฟล์ .env และตั้งค่า API Keys ที่เกี่ยวข้อง (Google API, Telegram Token, Google Sheets Credentials)
+
+4. **Run Application**
+   streamlit run app.py
